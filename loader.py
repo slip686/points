@@ -37,17 +37,23 @@ def upload_data(filename: str = None):
     with psycopg2.connect(dsn=get_settings().db.dsn) as conn:
         with conn.cursor() as cur:
 
-            sql_points_expr = sql.SQL("INSERT INTO {} ({}) VALUES {}").format(sql.Identifier('track_point_model'),
-            sql.SQL(', ').join(map(sql.Identifier, ['id', 'point', 'speed', 'gps_time', 'vehicle_id'])),
-            sql.SQL(', ').join(map(sql.Literal, [AsIs(f"({n[0]}, 'POINT({n[2]} {n[1]})', {n[3]}, '{n[4]}', {n[5]})") for n in parse_file(filename)])))
+            sql_points_expr = sql.SQL("INSERT INTO {} ({}) VALUES ").format(sql.Identifier('track_point_model'),
+                            sql.SQL(', ').join(map(sql.Identifier, ['id', 'point', 'speed', 'gps_time', 'vehicle_id'])))
 
-            sql_vehicles_expr = sql.SQL("INSERT INTO {} ({}) VALUES {} ON CONFLICT DO NOTHING").format(
-                            sql.Identifier('vehicle_model'),
-                                sql.Identifier('vehicle_id'),
-                                sql.SQL(', ').join(map(sql.Literal, [AsIs(f'({n[5]})') for n in parse_file(filename)])))
+            sql_vehicles_expr = sql.SQL("INSERT INTO {} ({}) VALUES ").format(
+                            sql.Identifier('vehicle_model'), sql.Identifier('vehicle_id'))
+
+            sql_points_expr_values = []
+            sql_vehicles_expr_values = []
+
+            for n in parse_file(filename):
+                sql_points_expr_values.append(*map(sql.Literal, [AsIs(f"({n[0]}, 'POINT({n[2]} {n[1]})', {n[3]}, '{n[4]}', {n[5]})")]))
+                sql_vehicles_expr_values.append(sql.Literal(AsIs(f'({n[5]})')))
+
             try:
-                cur.execute(sql_vehicles_expr)
-                cur.execute(sql_points_expr)
+                cur.execute(sql.Composed([sql_vehicles_expr, sql.SQL(', ').join(sql_vehicles_expr_values),
+                                          sql.Literal(AsIs('ON CONFLICT DO NOTHING'))]))
+                cur.execute(sql.Composed([sql_points_expr, sql.SQL(', ').join(sql_points_expr_values)]))
                 conn.commit()
             except psycopg2.Error as e:
                 print(e)
@@ -55,4 +61,4 @@ def upload_data(filename: str = None):
 
 
 if __name__ == '__main__':
-    upload_data("/Users/slip686/Downloads/2_5420464171701519891.xlsx")
+    upload_data("")
